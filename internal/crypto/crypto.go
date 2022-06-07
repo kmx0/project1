@@ -13,11 +13,7 @@ func CookieHash(ip, userAgent, login string) string {
 // CalculateLuhn return the check number
 func CalculateLuhn(number int) bool {
 	checkNumber := checksum(number)
-
-	if checkNumber == 0 {
-		return true
-	}
-	return false
+	return checkNumber == 0
 }
 
 func checksum(number int) int {
