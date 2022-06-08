@@ -125,24 +125,36 @@ func HandleLogin(c *gin.Context) {
 func HandleOrders(c *gin.Context) {
 	logrus.SetReportCaller(true)
 	contenType := c.GetHeader("Content-Type")
-	if contenType != "text/html; charset=utf-8" {
+	logrus.Info(contenType)
+	if contenType != "text/plain" {
 		c.Status(http.StatusBadRequest)
-	}
-	// c.Header("Content-Type", "text/html; charset=utf-8")
-	// Content-Type: text/plain
-	body := c.Request.Body
-	defer body.Close()
-	// crypto.CookieHash(c.ClientIP(), c.Request.UserAgent(), )
-	// cookie := c.GetHeader("session")
-	order, _ := ioutil.ReadAll(body)
-	orderInt, _ := strconv.Atoi(string(order))
-	// logrus.Info("Need check by LUN")
-	if crypto.CalculateLuhn(orderInt) {
-		// storage.LoadNewOrder(cookie, order)
-
-		c.Status(http.StatusOK)
 	} else {
-		c.Status(http.StatusUnprocessableEntity)
+		cookie := c.GetHeader("session")
+		// c.Header("Content-Type", "text/html; charset=utf-8")
+		// Content-Type: text/plain
+		body := c.Request.Body
+		defer body.Close()
+		// crypto.	CookieHash(c.ClientIP(), c.Request.UserAgent(), )
+		// cookie := c.GetHeader("session")
+		order, _ := ioutil.ReadAll(body)
+		orderInt, _ := strconv.Atoi(string(order))
+		// logrus.Info("Need check by LUN")
+		if crypto.CalculateLuhn(orderInt) {
+			err := storage.LoadNewOrder(cookie, orderInt)
+			logrus.Error(err)
+			switch {
+			case err == nil:
+				c.Status(http.StatusAccepted)
+			case strings.Contains(err.Error(), `duplicate key value violates unique constraint "orders_number_key"`):
+				c.Status(http.StatusOK)
+			case strings.Contains(err.Error(), `order belongs other user`):
+				c.Status(http.StatusConflict)
+			default:
+				c.Status(http.StatusInternalServerError)
+			}
+		} else {
+			c.Status(http.StatusUnprocessableEntity)
+		}
 	}
 
 }

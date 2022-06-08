@@ -72,9 +72,9 @@ func PingDB(ctx context.Context, urlExample string) bool {
 		req := fmt.Sprintf(`CREATE TABLE %s (
 			id SERIAL PRIMARY KEY,
 			user_id  integer,
-			number integer,
+			number bigint UNIQUE,
 			status varchar(255),
-			accrual varchar(255),
+			accrual integer,
 			uploaded_at timestamp with time zone,
 			CONSTRAINT fk_user
 			FOREIGN KEY(user_id) 
@@ -313,7 +313,57 @@ func CheckCookie(cookie, ip, userAgent string) error {
 	return nil
 }
 
-func LoadNewOrder() {
+func LoadNewOrder(cookie string, order int) error {
+	//select user_id from sessions where cookie = cookie
+	if Conn == nil {
+		logrus.Error("Error nil Conn")
+		return errors.New("error nil Conn")
+	}
+	userIDReq := fmt.Sprintf("SELECT user_id FROM sessions WHERE cookie = '%s' ;", cookie)
+
+	ctx := context.Background()
+	rowsC, err := Conn.Query(ctx, userIDReq)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	var userID int
+	defer rowsC.Close()
+	for rowsC.Next() {
+		rowsC.Scan(&userID)
+	}
+	err = rowsC.Err()
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+
+	seluserIDReq := fmt.Sprintf("SELECT user_id FROM orders WHERE number = '%d' ;", order)
+
+	rows, err := Conn.Query(ctx, seluserIDReq)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	selUserID := -1 // tochno ne sovpadet
+	defer rows.Close()
+	for rows.Next() {
+		rows.Scan(&selUserID)
+	}
+	err = rows.Err()
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	if selUserID != userID && selUserID!=-1 {
+		logrus.Error(selUserID, " ",userID)
+		return errors.New("order belongs other user")
+	}
+	status := "NEW"
+	insert := `INSERT INTO orders(user_id, number, status, uploaded_at) values($1, $2, $3, $4);`
+	logrus.Info(insert, userID, order, status, time.Now().Format(time.RFC3339))
+	_, err = Conn.Exec(context.Background(), insert, userID, order, status, time.Now().Format(time.RFC3339))
+	return err
 }
 
 // func SaveDataToDB(sm *InMemory) {
