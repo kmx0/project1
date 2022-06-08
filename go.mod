@@ -6,6 +6,7 @@ require (
 	github.com/caarlos0/env/v6 v6.9.3
 	github.com/gin-gonic/gin v1.8.0
 	github.com/go-playground/assert/v2 v2.0.1
+	github.com/guregu/null v4.0.0+incompatible
 	github.com/jackc/pgx/v4 v4.16.1
 	github.com/lib/pq v1.10.6
 	github.com/sirupsen/logrus v1.8.1

@@ -29,9 +29,10 @@ func SetupRouter(cf config.Config) *gin.Engine {
 		HandleAutorize(),
 		gin.Logger())
 
-	r.POST("/api/user/orders", HandleOrders)
+	r.POST("/api/user/orders", HandlePostOrders)
 	r.POST("/api/user/register", HandleRegister)
 	r.POST("/api/user/login", HandleLogin)
+	r.GET("/api/user/orders", HandleGetOrders)
 
 	// r.POST("/update/", HandleUpdateJSON)
 	// r.POST("/updates/", HandleUpdateBatchJSON)
@@ -125,7 +126,7 @@ func HandleLogin(c *gin.Context) {
 
 }
 
-func HandleOrders(c *gin.Context) {
+func HandlePostOrders(c *gin.Context) {
 	logrus.SetReportCaller(true)
 	contenType := c.GetHeader("Content-Type")
 	logrus.Info(contenType)
@@ -163,6 +164,32 @@ func HandleOrders(c *gin.Context) {
 		}
 	}
 
+}
+func HandleGetOrders(c *gin.Context) {
+	logrus.SetReportCaller(true)
+	// cookieHeader := c.GetHeader("Set-Cookie")
+	cookie, err := c.Request.Cookie("session")
+	logrus.Info(cookie, err)
+	ordersList, err := storage.GetOrdersList(cookie.Value)
+	if err == nil {
+		if len(ordersList) == 0 {
+			c.Status(http.StatusNoContent)
+			return
+		}
+		logrus.Info(ordersList)
+		body, err := json.MarshalIndent(ordersList, "\t", "\t")
+		if err != nil {
+			logrus.Error(err)
+		}
+		c.Header("Content-Type", "application/json")
+		c.JSON(http.StatusOK, ordersList)
+		logrus.Info(string(body))
+	} else {
+		switch {
+		case strings.Contains(err.Error(), "1"):
+			c.Status(http.StatusInternalServerError)
+		}
+	}
 }
 
 func HandleAutorize() gin.HandlerFunc {

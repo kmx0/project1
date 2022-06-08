@@ -354,8 +354,8 @@ func LoadNewOrder(cookie string, order int) error {
 		logrus.Error(err)
 		return err
 	}
-	if selUserID != userID && selUserID!=-1 {
-		logrus.Error(selUserID, " ",userID)
+	if selUserID != userID && selUserID != -1 {
+		logrus.Error(selUserID, " ", userID)
 		return errors.New("order belongs other user")
 	}
 	status := "NEW"
@@ -363,6 +363,57 @@ func LoadNewOrder(cookie string, order int) error {
 	logrus.Info(insert, userID, order, status, time.Now().Format(time.RFC3339))
 	_, err = Conn.Exec(context.Background(), insert, userID, order, status, time.Now().Format(time.RFC3339))
 	return err
+}
+
+func GetOrdersList(cookie string) ([]types.Order, error) {
+	//select user_id from sessions where cookie = cookie
+	if Conn == nil {
+		logrus.Error("Error nil Conn")
+		return nil, errors.New("error nil Conn")
+	}
+	userIDReq := fmt.Sprintf("SELECT user_id FROM sessions WHERE cookie = '%s' ;", cookie)
+
+	ctx := context.Background()
+	rowsC, err := Conn.Query(ctx, userIDReq)
+	if err != nil {
+		logrus.Error(err)
+		return nil, err
+	}
+	var userID int
+	defer rowsC.Close()
+	for rowsC.Next() {
+		rowsC.Scan(&userID)
+	}
+	err = rowsC.Err()
+	if err != nil {
+		logrus.Error(err)
+		return nil, err
+	}
+
+	seluserIDReq := fmt.Sprintf("SELECT number,status,accrual,uploaded_at FROM orders WHERE user_id = '%d' ORDER BY  uploaded_at DESC;", userID)
+
+	rows, err := Conn.Query(ctx, seluserIDReq)
+	if err != nil {
+		logrus.Error(err)
+		return nil, err
+	}
+	var order types.Order
+	ordersList := make([]types.Order, 0)
+	defer rows.Close()
+	for rows.Next() {
+		var nullInt sql.NullInt32
+		rows.Scan(&order.Number, &order.Status, &nullInt, &order.UploadedAt)
+		if nullInt.Valid {
+			order.Accrual = int(nullInt.Int32)
+		}
+		ordersList = append(ordersList, order)
+	}
+	err = rows.Err()
+	if err != nil {
+		logrus.Error(err)
+		return ordersList, err
+	}
+	return ordersList, err
 }
 
 // func SaveDataToDB(sm *InMemory) {
