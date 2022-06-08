@@ -232,7 +232,6 @@ func WriteUserCookie(user types.User) error {
 	}
 	if cookie != user.Cookie {
 		insert := `INSERT INTO sessions(cookie, ttl, user_id) values($1, $2, $3);`
-		logrus.Info(insert)
 		_, err = Conn.Exec(context.Background(), insert, user.Cookie, time.Now().Add(time.Hour*1), user.ID)
 	} else {
 		update := `UPDATE sessions SET ttl = $1 WHERE user_id = $2;`

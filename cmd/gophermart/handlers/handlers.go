@@ -59,27 +59,29 @@ func HandleRegister(c *gin.Context) {
 	err := decoder.Decode(&user)
 	if err != nil {
 		c.Status(http.StatusBadRequest)
-	}
-	logrus.Info(user)
-	id, err := storage.RegisterUser(user)
-	logrus.Info(err)
-	if err == nil {
-		user.ID = id
-		user.Cookie = crypto.CookieHash(c.Request.RemoteAddr, c.Request.UserAgent(), user.Login)
-		err := storage.WriteUserCookie(user)
-		if err != nil {
-			logrus.Error(err)
-			// c.Status(http.StatusInternalServerError)
-		}
-		c.Header("session", user.Cookie)
-		c.Status(http.StatusOK)
 	} else {
-		erStr := err.Error()
-		switch {
-		case strings.Contains(erStr, "duplicate"):
-			c.Status(http.StatusConflict)
-		default:
-			c.Status(http.StatusInternalServerError)
+
+		logrus.Info(user)
+		id, err := storage.RegisterUser(user)
+		logrus.Info(err)
+		if err == nil {
+			user.ID = id
+			user.Cookie = crypto.CookieHash(c.Request.RemoteAddr, c.Request.UserAgent(), user.Login)
+			err := storage.WriteUserCookie(user)
+			if err != nil {
+				logrus.Error(err)
+				// c.Status(http.StatusInternalServerError)
+			}
+			c.Header("session", user.Cookie)
+			c.Status(http.StatusOK)
+		} else {
+			erStr := err.Error()
+			switch {
+			case strings.Contains(erStr, "duplicate"):
+				c.Status(http.StatusConflict)
+			default:
+				c.Status(http.StatusInternalServerError)
+			}
 		}
 	}
 
@@ -96,7 +98,9 @@ func HandleLogin(c *gin.Context) {
 
 	err := decoder.Decode(&user)
 	if err != nil {
+		logrus.Error(err)
 		c.Status(http.StatusBadRequest)
+		return
 	}
 	logrus.Info(user)
 	user.IP = c.Request.RemoteAddr
