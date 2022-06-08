@@ -72,7 +72,7 @@ func HandleRegister(c *gin.Context) {
 				logrus.Error(err)
 				// c.Status(http.StatusInternalServerError)
 			}
-			c.Header("session", user.Cookie)
+			c.SetCookie("session", user.Cookie, 60*60, "", "", false, true)
 			c.Status(http.StatusOK)
 		} else {
 			erStr := err.Error()
@@ -110,8 +110,7 @@ func HandleLogin(c *gin.Context) {
 	if err == nil {
 
 		storage.WriteUserCookie(user)
-		c.Header("session", user.Cookie)
-
+		c.SetCookie("session", user.Cookie, 60*60, "", "", false, true)
 		c.Status(http.StatusOK)
 	}
 	if err != nil {
@@ -133,18 +132,21 @@ func HandleOrders(c *gin.Context) {
 	if contenType != "text/plain" {
 		c.Status(http.StatusBadRequest)
 	} else {
-		cookie := c.GetHeader("session")
+		// cookieHeader := c.GetHeader("Set-Cookie")
+		cookie, err := c.Request.Cookie("session")
+		logrus.Info(cookie, err)
+		// cookie := cookieHeader.
+
 		// c.Header("Content-Type", "text/html; charset=utf-8")
 		// Content-Type: text/plain
 		body := c.Request.Body
 		defer body.Close()
 		// crypto.	CookieHash(c.ClientIP(), c.Request.UserAgent(), )
-		// cookie := c.GetHeader("session")
 		order, _ := ioutil.ReadAll(body)
 		orderInt, _ := strconv.Atoi(string(order))
 		// logrus.Info("Need check by LUN")
 		if crypto.CalculateLuhn(orderInt) {
-			err := storage.LoadNewOrder(cookie, orderInt)
+			err := storage.LoadNewOrder(cookie.Value, orderInt)
 			logrus.Error(err)
 			switch {
 			case err == nil:
@@ -166,10 +168,10 @@ func HandleOrders(c *gin.Context) {
 func HandleAutorize() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.RequestURI != "/api/user/register" && c.Request.RequestURI != "/api/user/login" {
-			cookie := c.GetHeader("session")
+			cookie, err := c.Request.Cookie("session")
 			// logrus.Info(cookie)
-			if cookie != "" {
-				err := storage.CheckCookie(cookie, c.Request.RemoteAddr, c.Request.UserAgent())
+			if err == nil {
+				err := storage.CheckCookie(cookie.Value, c.Request.RemoteAddr, c.Request.UserAgent())
 				if err != nil {
 					logrus.Error(err)
 					// c.Status(http.StatusUnauthorized)
