@@ -3,6 +3,7 @@ package crypto
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"strconv"
 	"strings"
 
 	"github.com/theplant/luhn"
@@ -16,7 +17,8 @@ func CookieHash(ip, userAgent, login string) string {
 }
 
 // CalculateLuhn return the check number
-func CalculateLuhn(number int) bool {
+func CalculateLuhn(number string) bool {
 	//= true
-	return luhn.Valid(number)
+	numberInt, _ := strconv.Atoi(number)
+	return luhn.Valid(numberInt)
 }

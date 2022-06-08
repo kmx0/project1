@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -144,7 +143,7 @@ func HandlePostOrders(c *gin.Context) {
 		defer body.Close()
 		// crypto.	CookieHash(c.ClientIP(), c.Request.UserAgent(), )
 		order, _ := ioutil.ReadAll(body)
-		orderInt, _ := strconv.Atoi(string(order))
+		orderInt := string(order)
 		// logrus.Info("Need check by LUN")
 		if crypto.CalculateLuhn(orderInt) {
 			err := storage.LoadNewOrder(cookie.Value, orderInt)
@@ -174,7 +173,8 @@ func HandleGetOrders(c *gin.Context) {
 	ordersList, err := storage.GetOrdersList(cookie.Value)
 	if err == nil {
 		if len(ordersList) == 0 {
-			c.Status(http.StatusNoContent)
+			logrus.Info(ordersList)
+			c.JSON(http.StatusNoContent, ordersList)
 			return
 		}
 		logrus.Info(ordersList)

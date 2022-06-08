@@ -72,7 +72,7 @@ func PingDB(ctx context.Context, urlExample string) bool {
 		req := fmt.Sprintf(`CREATE TABLE %s (
 			id SERIAL PRIMARY KEY,
 			user_id  integer,
-			number bigint UNIQUE,
+			number varchar(255) UNIQUE,
 			status varchar(255),
 			accrual integer,
 			uploaded_at timestamp with time zone,
@@ -312,7 +312,7 @@ func CheckCookie(cookie, ip, userAgent string) error {
 	return nil
 }
 
-func LoadNewOrder(cookie string, order int) error {
+func LoadNewOrder(cookie string, order string) error {
 	//select user_id from sessions where cookie = cookie
 	if Conn == nil {
 		logrus.Error("Error nil Conn")
@@ -337,7 +337,7 @@ func LoadNewOrder(cookie string, order int) error {
 		return err
 	}
 
-	seluserIDReq := fmt.Sprintf("SELECT user_id FROM orders WHERE number = '%d' ;", order)
+	seluserIDReq := fmt.Sprintf("SELECT user_id FROM orders WHERE number = '%s' ;", order)
 
 	rows, err := Conn.Query(ctx, seluserIDReq)
 	if err != nil {
