@@ -169,6 +169,7 @@ func HandleGetOrders(c *gin.Context) {
 	logrus.SetReportCaller(true)
 	// cookieHeader := c.GetHeader("Set-Cookie")
 	cookie, err := c.Request.Cookie("session")
+	c.Header("Content-Type", "application/json")
 	logrus.Info(cookie, err)
 	ordersList, err := storage.GetOrdersList(cookie.Value)
 	if err == nil {
@@ -181,7 +182,6 @@ func HandleGetOrders(c *gin.Context) {
 		if err != nil {
 			logrus.Error(err)
 		}
-		c.Header("Content-Type", "application/json")
 		c.JSON(http.StatusOK, ordersList)
 		logrus.Info(string(body))
 	} else {
