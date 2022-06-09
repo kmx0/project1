@@ -1,71 +1,49 @@
 package handlers
 
 import (
-	"bytes"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
+	// "errors"
+
 	"testing"
 
-	"github.com/go-playground/assert/v2"
-	"github.com/kmx0/project1/internal/config"
+	"github.com/kmx0/project1/cmd/gophermart/storage"
+	"github.com/kmx0/project1/internal/crypto"
+	"github.com/kmx0/project1/internal/errors"
 	"github.com/kmx0/project1/internal/types"
-	"github.com/stretchr/testify/require"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
-// var store repositories.Repository
-// var cfg config.Config
+func TestSpec(t *testing.T) {
+	x := 0
+	// Only pass t into top-level Convey calls
+	Convey("Тестируем сервер", t, func() {
+		Convey("Тестируем публичную часть", func() {
+			store := storage.NewMockStorage()
 
-// func SetRepository(s repositories.Repository) {
-// 	store = s
-// }
+			id, err := store.RegisterUser(types.User{Login: "henry", Password: "blaqqq"})
+			So(id, ShouldEqual, -1)
+			So(err, ShouldBeError, errors.ErrStatusConflict.Error())
 
-func TestHandleRegister(t *testing.T) {
-	// s := storage.NewInMemory(config.Config{})
-	// SetRepository(s)
-	type wantStruct struct {
-		statusCode int
-		// counter     types.Counter
-	}
-	// var store repositories.Repository
+			id, err = store.RegisterUser(types.User{Login: "bla", Password: "bla"})
+			So(id, ShouldEqual, 2)
+			So(err, ShouldBeNil)
 
-	router := SetupRouter(config.Config{})
-	tests := []struct {
-		name string
-		req  string
-		body types.User
-		want wantStruct
-	}{
-		{
-			name: "success Register",
-			req:  "/api/user/register",
-			body: types.User{Login: "user1",Password: "PAss1"},
-			want: wantStruct{
-				statusCode: 200,
-			},
-		},
-	}
+			id, err = store.RegisterUser(types.User{Login: "bla", Password: "bla"})
+			So(id, ShouldEqual, -1)
+			So(err, ShouldBeError, errors.ErrStatusConflict.Error())
+			user := types.User{Login: "bla", Password: "bla", Cookie: crypto.CookieHash("", "", "bla")}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+			err = store.WriteUserCookie(user, 2)
+			So(err, ShouldBeNil)
 
-			// logrus.Info(tt.req)
-			w := httptest.NewRecorder()
-			// req, _ := http.NewRequest("GET", "/ping", nil)
-			// bodyReader := bytes.NewReader(
-			bodyBytes, err := json.Marshal(tt.body)
-			require.NoError(t, err)
-			bodyReader := bytes.NewReader(bodyBytes)
-			request, _ := http.NewRequest(http.MethodPost, tt.req, bodyReader)
+			id, cookie, err := store.LoginUser(user)
+			So(id, ShouldEqual, 2)
+			So(cookie, ShouldEqual, user.Cookie)
+			So(err, ShouldBeNil)
+			// x++
 
-			router.ServeHTTP(w, request)
-			res := w.Result()
-
-			assert.Equal(t, tt.want.statusCode, res.StatusCode)
-			err = res.Body.Close()
-			require.NoError(t, err)
-			// mapresult, err := ioutil.ReadAll(res.Body)
-			// HandleCounter(tt.args.w, tt.args.r)
+			Convey("The value should be greater by one", func() {
+				So(x, ShouldEqual, 0)
+			})
 		})
-	}
+	})
 }

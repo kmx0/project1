@@ -17,6 +17,7 @@ func main() {
 	logrus.SetReportCaller(true)
 	globalCtx := context.Background()
 	signalChanel := make(chan os.Signal, 1)
+	store := storage.NewDB()
 	signal.Notify(signalChanel,
 		syscall.SIGINT,
 		syscall.SIGTERM,
@@ -55,8 +56,9 @@ func main() {
 	}()
 	cfg := config.LoadConfig()
 	logrus.Infof("CFG for SERVER  %+v", cfg)
-	storage.PingDB(globalCtx, cfg.DBURI)
-	r := handlers.SetupRouter(cfg)
+	store.PingDB(globalCtx, cfg.DBURI)
+	logrus.Info(store)
+	r := handlers.SetupRouter(cfg, store)
 	go http.ListenAndServe(cfg.Address, r)
 	exitCode := <-exitChan
 

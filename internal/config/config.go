@@ -6,7 +6,7 @@ import (
 )
 
 type Config struct {
-	Address string `env:"ADDRESS" envDefault:"127.0.0.1:8080"`
+	Address string `env:"ADDRESS" envDefault:"127.0.0.1:8081"`
 	Key     string `env:"KEY" `
 	DBURI  string `env:"DATABASE_URI" envDefault:"postgres://postgres:postgres@localhost:5432/gophermart"`
 	// -accrual-database-uri="***postgres/praktikum?sslmode=disable"

@@ -15,11 +15,19 @@ import (
 	"github.com/kmx0/project1/internal/types"
 )
 
-func SetupRouter(cf config.Config) *gin.Engine {
+var store storage.Storage
+
+// var cfg config.Config
+
+func SetRepository(s storage.Storage) {
+	store = s
+}
+
+func SetupRouter(cf config.Config, store storage.Storage) (*gin.Engine) {
 	//  *storage.InMemory) {
-	// store := storage.NewInMemory(cfg)
+	// store := storage.NewDB()
 	// cfg = cf
-	// SetRepository(store)
+	SetRepository(store)
 
 	r := gin.New()
 	r.Use(gin.Recovery(),
@@ -28,10 +36,11 @@ func SetupRouter(cf config.Config) *gin.Engine {
 		HandleAutorize(),
 		gin.Logger())
 
-	r.POST("/api/user/orders", HandlePostOrders)
 	r.POST("/api/user/register", HandleRegister)
 	r.POST("/api/user/login", HandleLogin)
 	r.GET("/api/user/orders", HandleGetOrders)
+	r.POST("/api/user/orders", HandlePostOrders)
+	r.GET("/api/user/balance", HandleGetBalance)
 
 	// r.POST("/update/", HandleUpdateJSON)
 	// r.POST("/updates/", HandleUpdateBatchJSON)
@@ -52,7 +61,7 @@ func HandleRegister(c *gin.Context) {
 
 	body := c.Request.Body
 	defer body.Close()
-
+	//add check json format in content-type
 	decoder := json.NewDecoder(body)
 	var user types.User
 
@@ -62,12 +71,12 @@ func HandleRegister(c *gin.Context) {
 	} else {
 
 		logrus.Info(user)
-		id, err := storage.RegisterUser(user)
+		id, err := store.RegisterUser(user)
 		logrus.Info(err)
 		if err == nil {
 			user.ID = id
 			user.Cookie = crypto.CookieHash(c.Request.RemoteAddr, c.Request.UserAgent(), user.Login)
-			err := storage.WriteUserCookie(user)
+			err := store.WriteUserCookie(user, id)
 			if err != nil {
 				logrus.Error(err)
 				// c.Status(http.StatusInternalServerError)
@@ -86,6 +95,7 @@ func HandleRegister(c *gin.Context) {
 	}
 
 }
+
 func HandleLogin(c *gin.Context) {
 	logrus.SetReportCaller(true)
 
@@ -105,11 +115,11 @@ func HandleLogin(c *gin.Context) {
 	logrus.Info(user)
 	user.IP = c.Request.RemoteAddr
 	user.UserAgent = c.Request.UserAgent()
-	user.ID, user.Cookie, err = storage.LoginUser(user)
+	user.ID, user.Cookie, err = store.LoginUser(user)
 	logrus.Info(err)
 	if err == nil {
 
-		storage.WriteUserCookie(user)
+		store.WriteUserCookie(user, user.ID)
 		c.SetCookie("session", user.Cookie, 60*60, "", "", false, true)
 		c.Status(http.StatusOK)
 	}
@@ -146,7 +156,7 @@ func HandlePostOrders(c *gin.Context) {
 		orderInt := string(order)
 		// logrus.Info("Need check by LUN")
 		if crypto.CalculateLuhn(orderInt) {
-			err := storage.LoadNewOrder(cookie.Value, orderInt)
+			err := store.LoadNewOrder(cookie.Value, orderInt)
 			logrus.Error(err)
 			switch {
 			case err == nil:
@@ -170,7 +180,7 @@ func HandleGetOrders(c *gin.Context) {
 	cookie, err := c.Request.Cookie("session")
 	c.Header("Content-Type", "application/json")
 	logrus.Info(cookie, err)
-	ordersList, err := storage.GetOrdersList(cookie.Value)
+	ordersList, err := store.GetOrdersList(cookie.Value)
 	if err == nil {
 		if len(ordersList) == 0 {
 			logrus.Info(ordersList)
@@ -192,13 +202,21 @@ func HandleGetOrders(c *gin.Context) {
 	}
 }
 
+func HandleGetBalance(c *gin.Context) {
+	logrus.SetReportCaller(true)
+	// cookieHeader := c.GetHeader("Set-Cookie")
+	cookie, err := c.Request.Cookie("session")
+	c.Header("Content-Type", "application/json")
+	logrus.Info(cookie, err)
+}
+
 func HandleAutorize() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request.RequestURI != "/api/user/register" && c.Request.RequestURI != "/api/user/login" {
 			cookie, err := c.Request.Cookie("session")
 			// logrus.Info(cookie)
 			if err == nil {
-				err := storage.CheckCookie(cookie.Value, c.Request.RemoteAddr, c.Request.UserAgent())
+				err := store.CheckCookie(cookie.Value, c.Request.RemoteAddr, c.Request.UserAgent())
 				if err != nil {
 					logrus.Error(err)
 					// c.Status(http.StatusUnauthorized)

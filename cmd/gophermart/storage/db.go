@@ -15,79 +15,85 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var DB *sql.DB
-var Conn *pgx.Conn
-var DBName = "gophermart"
+type PostgresStorage struct {
+	DB     *sql.DB
+	Conn   *pgx.Conn
+	DBName string
+}
 
-func PingDB(ctx context.Context, urlExample string) bool {
+func NewDB() Storage {
+	return &PostgresStorage{DBName: "gophermart"}
+}
+
+func (ps *PostgresStorage) PingDB(ctx context.Context, urlExample string) bool {
 	// urlExample = "postgres://postgres:postgres@localhost:5432/gophermart"
 	logrus.Info(urlExample)
 	var err error
 	// urlExample := "postgres://username:password@localhost:5432/database_name"
-	Conn, err = pgx.Connect(context.Background(), urlExample)
+	ps.Conn, err = pgx.Connect(context.Background(), urlExample)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
 	// defer conn.Close(context.Background())
 
-	err = Conn.Ping(context.Background())
+	err = ps.Conn.Ping(context.Background())
 	if err != nil {
 		logrus.Error(err)
 		return false
 	}
 
 	logrus.Info("Successfully connected!")
-	logrus.Info(CheckDBExist())
+	logrus.Info(checkDBExist(ps.Conn, ps.DBName))
 	// if !CheckDBExist() {
 
 	// }
 	TableName := "users"
-	if !CheckTableExist(TableName) {
+	if !checkTableExist(ps.Conn, TableName) {
 		req := fmt.Sprintf(`CREATE TABLE %s (
 			id SERIAL PRIMARY KEY,
 			login varchar(255) UNIQUE,
 			password varchar(255)
-		);`, TableName)
-		AddTabletoDB(req)
+			);`, TableName)
+		addTabletoDB(ps.Conn, req)
 	}
 	TableName = "sessions"
 
-	if !CheckTableExist(TableName) {
+	if !checkTableExist(ps.Conn, TableName) {
 		req := fmt.Sprintf(`CREATE TABLE %s (
-			id SERIAL PRIMARY KEY,
-			user_id  integer,
-			cookie varchar(255),
-			ttl timestamp with time zone,
-			CONSTRAINT fk_user
-			FOREIGN KEY(user_id) 
-			REFERENCES users(id)
-			ON DELETE CASCADE
-		);`, TableName)
-		AddTabletoDB(req)
+				id SERIAL PRIMARY KEY,
+				user_id  integer,
+				cookie varchar(255),
+				ttl timestamp with time zone,
+				CONSTRAINT fk_user
+				FOREIGN KEY(user_id)
+				REFERENCES users(id)
+				ON DELETE CASCADE
+				);`, TableName)
+		addTabletoDB(ps.Conn, req)
 	}
 	TableName = "orders"
 
-	if !CheckTableExist(TableName) {
+	if !checkTableExist(ps.Conn, TableName) {
 		req := fmt.Sprintf(`CREATE TABLE %s (
-			id SERIAL PRIMARY KEY,
-			user_id  integer,
-			number varchar(255) UNIQUE,
-			status varchar(255),
-			accrual integer,
-			uploaded_at timestamp with time zone,
-			CONSTRAINT fk_user
-			FOREIGN KEY(user_id) 
-			REFERENCES users(id)
-			ON DELETE CASCADE
-		);`, TableName)
-		AddTabletoDB(req)
+					id SERIAL PRIMARY KEY,
+					user_id  integer,
+					number varchar(255) UNIQUE,
+					status varchar(255),
+					accrual integer,
+					uploaded_at timestamp with time zone,
+					CONSTRAINT fk_user
+					FOREIGN KEY(user_id)
+					REFERENCES users(id)
+					ON DELETE CASCADE
+					);`, TableName)
+		addTabletoDB(ps.Conn, req)
 	}
 	// logrus.Info(CheckTableExist())
 	return true
 }
 
-func CheckDBExist() bool {
+func checkDBExist(Conn *pgx.Conn, DBName string) bool {
 	if Conn == nil {
 		logrus.Error("Error nil Conn")
 		return false
@@ -114,7 +120,7 @@ func CheckDBExist() bool {
 	return false
 }
 
-func CheckTableExist(TableName string) bool {
+func checkTableExist(Conn *pgx.Conn, TableName string) bool {
 	if Conn == nil {
 		logrus.Error("Error nil Conn")
 		return false
@@ -141,7 +147,7 @@ func CheckTableExist(TableName string) bool {
 	return false
 }
 
-func AddTabletoDB(req string) {
+func addTabletoDB(Conn *pgx.Conn, req string) {
 	if Conn == nil {
 		logrus.Error("Error nil Conn")
 		return
@@ -164,27 +170,28 @@ func AddTabletoDB(req string) {
 	}
 
 }
-func RegisterUser(user types.User) (id int, err error) {
-	if Conn == nil {
+func (ps *PostgresStorage) RegisterUser(user types.User) (id int, err error) {
+	if ps.Conn == nil {
 		logrus.Error("Error nil Conn")
 		return 0, errors.New("error nil Conn")
 	}
 	// checkExist := fmt.Sprintf("SELECT users (SELECT 1 FROM users WHERE Login = %s LIMIT 1);", user.Login)
 	insert := `INSERT INTO users(Login, Password) values($1, $2) RETURNING id`
 
-	err = Conn.QueryRow(context.Background(), insert, user.Login, user.Password).Scan(&id)
+	err = ps.Conn.QueryRow(context.Background(), insert, user.Login, user.Password).Scan(&id)
 
 	return id, err
 }
-func LoginUser(user types.User) (id int, cookie string, err error) {
-	if Conn == nil {
+
+func (ps *PostgresStorage) LoginUser(user types.User) (id int, cookie string, err error) {
+	if ps.Conn == nil {
 		logrus.Error("Error nil Conn")
 		return 0, "", errors.New("error nil Conn")
 	}
 	loginReq := fmt.Sprintf("SELECT id, login, password FROM users WHERE login = '%s' ;", user.Login)
 
 	ctx := context.Background()
-	rowsC, err := Conn.Query(ctx, loginReq)
+	rowsC, err := ps.Conn.Query(ctx, loginReq)
 	if err != nil {
 		logrus.Error(err)
 		return 0, "", err
@@ -208,14 +215,14 @@ func LoginUser(user types.User) (id int, cookie string, err error) {
 	}
 }
 
-func WriteUserCookie(user types.User) error {
-	if Conn == nil {
+func (ps *PostgresStorage) WriteUserCookie(user types.User, id int) error {
+	if ps.Conn == nil {
 		logrus.Error("Error nil Conn")
 		return errors.New("error nil Conn")
 	}
 	CookieForDelReq := fmt.Sprintf("SELECT cookie FROM sessions WHERE user_id = '%d' ;", user.ID)
 	ctx := context.Background()
-	rowsC, err := Conn.Query(ctx, CookieForDelReq)
+	rowsC, err := ps.Conn.Query(ctx, CookieForDelReq)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -232,10 +239,10 @@ func WriteUserCookie(user types.User) error {
 	}
 	if cookie != user.Cookie {
 		insert := `INSERT INTO sessions(cookie, ttl, user_id) values($1, $2, $3);`
-		_, err = Conn.Exec(context.Background(), insert, user.Cookie, time.Now().Add(time.Hour*1), user.ID)
+		_, err = ps.Conn.Exec(context.Background(), insert, user.Cookie, time.Now().Add(time.Hour*1), user.ID)
 	} else {
 		update := `UPDATE sessions SET ttl = $1 WHERE user_id = $2;`
-		_, err = Conn.Exec(context.Background(), update, time.Now().Add(time.Hour*1), user.ID)
+		_, err = ps.Conn.Exec(context.Background(), update, time.Now().Add(time.Hour*1), user.ID)
 		if err != nil {
 			logrus.Error(err)
 		}
@@ -243,27 +250,27 @@ func WriteUserCookie(user types.User) error {
 	return err
 }
 
-func DeleteCookie(cookie string) error {
-	if Conn == nil {
+func (ps *PostgresStorage) DeleteCookie(cookie string) error {
+	if ps.Conn == nil {
 		logrus.Error("Error nil Conn")
 		return errors.New("error nil Conn")
 	}
 	deleteCookie := `DELETE FROM sessions WHERE cookie = $1;`
 
 	// logrus.Info(deleteCookie)
-	_, err := Conn.Exec(context.Background(), deleteCookie, cookie)
+	_, err := ps.Conn.Exec(context.Background(), deleteCookie, cookie)
 	return err
 }
 
-func CheckCookie(cookie, ip, userAgent string) error {
-	if Conn == nil {
+func (ps *PostgresStorage) CheckCookie(cookie, ip, userAgent string) error {
+	if ps.Conn == nil {
 		logrus.Error("Error nil Conn")
 		return errors.New("error nil Conn")
 	}
 	userIDReq := fmt.Sprintf("SELECT user_id, ttl FROM sessions WHERE cookie = '%s' ;", cookie)
 
 	ctx := context.Background()
-	rowsC, err := Conn.Query(ctx, userIDReq)
+	rowsC, err := ps.Conn.Query(ctx, userIDReq)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -281,13 +288,13 @@ func CheckCookie(cookie, ip, userAgent string) error {
 	}
 	if !ttl.After(time.Now()) {
 		logrus.Warn(ttl)
-		DeleteCookie(cookie)
+		ps.DeleteCookie(cookie)
 		return errors.New("cookie is expired")
 	}
 
 	loginReq := fmt.Sprintf("SELECT login FROM users WHERE id = '%d' ;", userID)
 
-	rowsC, err = Conn.Query(ctx, loginReq)
+	rowsC, err = ps.Conn.Query(ctx, loginReq)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -312,16 +319,16 @@ func CheckCookie(cookie, ip, userAgent string) error {
 	return nil
 }
 
-func LoadNewOrder(cookie string, order string) error {
+func (ps *PostgresStorage) LoadNewOrder(cookie string, order string) error {
 	//select user_id from sessions where cookie = cookie
-	if Conn == nil {
+	if ps.Conn == nil {
 		logrus.Error("Error nil Conn")
 		return errors.New("error nil Conn")
 	}
 	userIDReq := fmt.Sprintf("SELECT user_id FROM sessions WHERE cookie = '%s' ;", cookie)
 
 	ctx := context.Background()
-	rowsC, err := Conn.Query(ctx, userIDReq)
+	rowsC, err := ps.Conn.Query(ctx, userIDReq)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -339,7 +346,7 @@ func LoadNewOrder(cookie string, order string) error {
 
 	seluserIDReq := fmt.Sprintf("SELECT user_id FROM orders WHERE number = '%s' ;", order)
 
-	rows, err := Conn.Query(ctx, seluserIDReq)
+	rows, err := ps.Conn.Query(ctx, seluserIDReq)
 	if err != nil {
 		logrus.Error(err)
 		return err
@@ -361,20 +368,20 @@ func LoadNewOrder(cookie string, order string) error {
 	status := "NEW"
 	insert := `INSERT INTO orders(user_id, number, status, uploaded_at) values($1, $2, $3, $4);`
 	logrus.Info(insert, userID, order, status, time.Now().Format(time.RFC3339))
-	_, err = Conn.Exec(context.Background(), insert, userID, order, status, time.Now().Format(time.RFC3339))
+	_, err = ps.Conn.Exec(context.Background(), insert, userID, order, status, time.Now().Format(time.RFC3339))
 	return err
 }
 
-func GetOrdersList(cookie string) ([]types.Order, error) {
+func (ps *PostgresStorage) GetOrdersList(cookie string) ([]types.Order, error) {
 	//select user_id from sessions where cookie = cookie
-	if Conn == nil {
+	if ps.Conn == nil {
 		logrus.Error("Error nil Conn")
 		return nil, errors.New("error nil Conn")
 	}
 	userIDReq := fmt.Sprintf("SELECT user_id FROM sessions WHERE cookie = '%s' ;", cookie)
 
 	ctx := context.Background()
-	rowsC, err := Conn.Query(ctx, userIDReq)
+	rowsC, err := ps.Conn.Query(ctx, userIDReq)
 	if err != nil {
 		logrus.Error(err)
 		return nil, err
@@ -392,7 +399,7 @@ func GetOrdersList(cookie string) ([]types.Order, error) {
 
 	seluserIDReq := fmt.Sprintf("SELECT number,status,accrual,uploaded_at FROM orders WHERE user_id = '%d' ORDER BY  uploaded_at DESC;", userID)
 
-	rows, err := Conn.Query(ctx, seluserIDReq)
+	rows, err := ps.Conn.Query(ctx, seluserIDReq)
 	if err != nil {
 		logrus.Error(err)
 		return nil, err
@@ -514,4 +521,9 @@ func GetOrdersList(cookie string) ([]types.Order, error) {
 // 	if err != nil {
 // 		logrus.Error(err)
 // 	}
+// }
+
+// func (sm *Storage) GetCounter(metricType string, metric string) (types.Counter, error) {
+
+// 	return sm.MapCounter[metric], nil
 // }
