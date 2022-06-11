@@ -426,10 +426,10 @@ func (ps *PostgresStorage) GetOrdersList(cookie string) ([]types.Order, error) {
 	ordersList := make([]types.Order, 0)
 	defer rows.Close()
 	for rows.Next() {
-		var nullInt sql.NullInt32
-		rows.Scan(&order.Number, &order.Status, &nullInt, &order.UploadedAt)
-		if nullInt.Valid {
-			order.Accrual = int(nullInt.Int32)
+		var nullFloat64 sql.NullFloat64
+		rows.Scan(&order.Number, &order.Status, &nullFloat64, &order.UploadedAt)
+		if nullFloat64.Valid {
+			order.Accrual = nullFloat64.Float64
 		}
 		ordersList = append(ordersList, order)
 	}
