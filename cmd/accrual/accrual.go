@@ -16,7 +16,7 @@ import (
 func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err error) {
 
 	client := &http.Client{}
-	endpoint := fmt.Sprintf("%s/%s", AccSysSddr, number)
+	endpoint := fmt.Sprintf("%s/api/orders/%s", AccSysSddr, number)
 	logrus.Info(endpoint)
 	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	errors.Is(nil, err)
