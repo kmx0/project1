@@ -61,7 +61,6 @@ func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err er
 		logrus.Infof("%v", accrual)
 		go func() {
 			for {
-				time.Sleep(3 * time.Second)
 				switch {
 				// kill -SIGHUP XXXX [XXXX - идентификатор процесса для программы]
 				case accrual.Status == "INVALID" || accrual.Status == "PROCESSED":
@@ -82,6 +81,7 @@ func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err er
 				default:
 					return
 				}
+				time.Sleep(3 * time.Second)
 			}
 		}()
 	case http.StatusTooManyRequests:
