@@ -17,7 +17,7 @@ func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err er
 
 	client := &http.Client{}
 	endpoint := fmt.Sprintf("%s/%s", AccSysSddr, number)
-	logrus.Info(AccSysSddr)
+	logrus.Info(endpoint)
 	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	errors.Is(nil, err)
 	if err != nil {
@@ -48,40 +48,50 @@ func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err er
 	// 	}`, number)
 	// logrus.Info(bodyString)
 	// body := ioutil.NopCloser(strings.NewReader(bodyString))
-	decoder := json.NewDecoder(response.Body)
-	var accrual types.AccrualO
+	switch response.StatusCode {
+	case http.StatusOK:
+		decoder := json.NewDecoder(response.Body)
+		var accrual types.AccrualO
 
-	err = decoder.Decode(&accrual)
-	if err != nil {
-		logrus.Error(err)
-		return err
-	}
-	logrus.Infof("%v", accrual)
-	go func() {
-		for {
-			time.Sleep(3 * time.Second)
-			switch {
-			// kill -SIGHUP XXXX [XXXX - идентификатор процесса для программы]
-			case accrual.Status == "INVALID" || accrual.Status == "PROCESSED":
-				logrus.Infof("Writing to table orders status %s for number %s", accrual.Status, number)
-				err := store.WriteAccrual(accrual)
-				logrus.Info(err)
-				//write to db invalid or proc
-				return
-			case accrual.Status == "REGISTERED":
-				logrus.Infof("Getted %s", accrual.Status)
-				logrus.Infof("Getting new status for number  %s", number)
-				GetAccrualCicle(store, &accrual, AccSysSddr, number)
-			case accrual.Status == "PROCESSING":
-				logrus.Infof("Writing to table balance status %s for number %s", accrual.Status, number)
-				err := store.WriteAccrual(accrual)
-				GetAccrualCicle(store, &accrual, AccSysSddr, number)
-				logrus.Info(err)
-			default:
-				return
-			}
+		err = decoder.Decode(&accrual)
+		if err != nil {
+			logrus.Error(err)
+			return err
 		}
-	}()
+		logrus.Infof("%v", accrual)
+		go func() {
+			for {
+				time.Sleep(3 * time.Second)
+				switch {
+				// kill -SIGHUP XXXX [XXXX - идентификатор процесса для программы]
+				case accrual.Status == "INVALID" || accrual.Status == "PROCESSED":
+					logrus.Infof("Writing to table orders status %s for number %s", accrual.Status, number)
+					err := store.WriteAccrual(accrual)
+					logrus.Info(err)
+					//write to db invalid or proc
+					return
+				case accrual.Status == "REGISTERED":
+					logrus.Infof("Getted %s", accrual.Status)
+					logrus.Infof("Getting new status for number  %s", number)
+					GetAccrualCicle(store, &accrual, AccSysSddr, number)
+				case accrual.Status == "PROCESSING":
+					logrus.Infof("Writing to table balance status %s for number %s", accrual.Status, number)
+					err := store.WriteAccrual(accrual)
+					GetAccrualCicle(store, &accrual, AccSysSddr, number)
+					logrus.Info(err)
+				default:
+					return
+				}
+			}
+		}()
+	case http.StatusTooManyRequests:
+		logrus.Info("StatusTooManyRequests")
+		return
+	default:
+		logrus.Info("Schet")
+		return
+
+	}
 	return
 }
 
