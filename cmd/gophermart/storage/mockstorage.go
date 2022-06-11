@@ -29,6 +29,7 @@ func NewMockStorage() Storage {
 func (ms *MockStorage) PingDB(ctx context.Context, urlExample string) bool {
 	return true
 }
+
 func (ms *MockStorage) RegisterUser(user types.User) (id int, err error) {
 	if _, ok := ms.Users[user.Login]; ok {
 		return -1, errors.ErrStatusConflict
@@ -70,6 +71,30 @@ func (ms *MockStorage) CheckCookie(cookie, ip, userAgent string) error {
 	return nil
 }
 
-func (ps *MockStorage) LoadNewOrder(cookie string, order string) error {
+func (ms *MockStorage) LoadNewOrder(cookie string, order string) error {
+	return nil
+}
+
+func (ms *MockStorage) WriteAccrual(accrual types.AccrualO) error {
+	return nil
+}
+func (ms *MockStorage) GetBalance(cookie string) (balance float64, err error) {
+	return balance, nil
+}
+
+func (ms *MockStorage) GetUserID(cookie string) (id int, err error) {
+	return id, err
+}
+func (ms *MockStorage) GetSUMWithdraws(userID int) (withdrawals float64, err error) {
+	return withdrawals, nil
+}
+func (ms *MockStorage) GetWithdrawals(userID int) ([]types.Withdraw, error) {
+	return nil, nil
+}
+
+func (ms *MockStorage) ChangeBalanceValue(value float64, action string, userID int) error {
+	return nil
+}
+func (ms *MockStorage) WriteWithdraw(withdraw types.Withdraw, userID int) error {
 	return nil
 }

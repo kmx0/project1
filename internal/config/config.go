@@ -6,9 +6,10 @@ import (
 )
 
 type Config struct {
-	Address string `env:"ADDRESS" envDefault:"127.0.0.1:8081"`
-	Key     string `env:"KEY" `
-	DBURI  string `env:"DATABASE_URI" envDefault:"postgres://postgres:postgres@localhost:5432/gophermart"`
+	Address    string `env:"ADDRESS" envDefault:"127.0.0.1:8081"`
+	Key        string `env:"KEY" `
+	DBURI      string `env:"DATABASE_URI" envDefault:"postgres://postgres:postgres@localhost:5432/gophermart"`
+	AccSysSddr string `env:"ACCRUAL_SYSTEM_ADDRESS" envDefault:"http://127.0.0.1:8080"`
 	// -accrual-database-uri="***postgres/praktikum?sslmode=disable"
 	// "postgres://postgres:postgres@localhost:5432/metrics"
 }

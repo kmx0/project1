@@ -53,7 +53,8 @@ func (ps *PostgresStorage) PingDB(ctx context.Context, urlExample string) bool {
 		req := fmt.Sprintf(`CREATE TABLE %s (
 			id SERIAL PRIMARY KEY,
 			login varchar(255) UNIQUE,
-			password varchar(255)
+			password varchar(255),
+			balance real
 			);`, TableName)
 		addTabletoDB(ps.Conn, req)
 	}
@@ -80,7 +81,7 @@ func (ps *PostgresStorage) PingDB(ctx context.Context, urlExample string) bool {
 					user_id  integer,
 					number varchar(255) UNIQUE,
 					status varchar(255),
-					accrual integer,
+					accrual real,
 					uploaded_at timestamp with time zone,
 					CONSTRAINT fk_user
 					FOREIGN KEY(user_id)
@@ -89,6 +90,23 @@ func (ps *PostgresStorage) PingDB(ctx context.Context, urlExample string) bool {
 					);`, TableName)
 		addTabletoDB(ps.Conn, req)
 	}
+	TableName = "withdrawals"
+
+	if !checkTableExist(ps.Conn, TableName) {
+		req := fmt.Sprintf(`CREATE TABLE %s (
+					id SERIAL PRIMARY KEY,
+					user_id  integer,
+					order_id varchar(255) UNIQUE,
+					withdraw real,
+					processed_at timestamp with time zone,
+					CONSTRAINT fk_user
+					FOREIGN KEY(user_id)
+					REFERENCES users(id)
+					ON DELETE CASCADE
+					);`, TableName)
+		addTabletoDB(ps.Conn, req)
+	}
+
 	// logrus.Info(CheckTableExist())
 	return true
 }
@@ -176,9 +194,9 @@ func (ps *PostgresStorage) RegisterUser(user types.User) (id int, err error) {
 		return 0, errors.New("error nil Conn")
 	}
 	// checkExist := fmt.Sprintf("SELECT users (SELECT 1 FROM users WHERE Login = %s LIMIT 1);", user.Login)
-	insert := `INSERT INTO users(Login, Password) values($1, $2) RETURNING id`
+	insert := `INSERT INTO users(login, password, balance) values($1, $2, $3) RETURNING id`
 
-	err = ps.Conn.QueryRow(context.Background(), insert, user.Login, user.Password).Scan(&id)
+	err = ps.Conn.QueryRow(context.Background(), insert, user.Login, user.Password, user.Balance).Scan(&id)
 
 	return id, err
 }
@@ -367,7 +385,7 @@ func (ps *PostgresStorage) LoadNewOrder(cookie string, order string) error {
 	}
 	status := "NEW"
 	insert := `INSERT INTO orders(user_id, number, status, uploaded_at) values($1, $2, $3, $4);`
-	logrus.Info(insert, userID, order, status, time.Now().Format(time.RFC3339))
+	// logrus.Info(insert, userID, order, status, time.Now().Format(time.RFC3339))
 	_, err = ps.Conn.Exec(context.Background(), insert, userID, order, status, time.Now().Format(time.RFC3339))
 	return err
 }
@@ -421,6 +439,177 @@ func (ps *PostgresStorage) GetOrdersList(cookie string) ([]types.Order, error) {
 		return ordersList, err
 	}
 	return ordersList, err
+}
+func (ps *PostgresStorage) WriteAccrual(accrual types.AccrualO) error {
+	if ps.Conn == nil {
+		logrus.Error("Error nil Conn")
+		return errors.New("error nil Conn")
+	}
+
+	// err = ps.Conn.QueryRow(context.Background(), insert, user.Login, user.Password, user.Balance).Scan(&id)
+
+	var id int
+	update := `UPDATE orders SET status = $1, accrual = $2 WHERE number = $3 RETURNING user_id;`
+	err := ps.Conn.QueryRow(context.Background(), update, accrual.Status, accrual.Accrual, accrual.Order).Scan(&id)
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	if accrual.Accrual != 0 {
+		return ps.ChangeBalanceValue(accrual.Accrual, "+", id)
+	} else {
+		return nil
+	}
+}
+func (ps *PostgresStorage) ChangeBalanceValue(value float64, action string, userID int) error {
+	if ps.Conn == nil {
+		logrus.Error("Error nil Conn")
+		return errors.New("error nil Conn")
+	}
+	updateBal := fmt.Sprintf(`UPDATE users SET balance = balance %s $1 WHERE id = $2;`, action)
+	// logrus.Info(insert, userID, order, status, time.Now().Format(time.RFC3339))
+	_, err := ps.Conn.Exec(context.Background(), updateBal, value, userID)
+	return err
+}
+
+func (ps *PostgresStorage) GetUserID(cookie string) (id int, err error) {
+	if ps.Conn == nil {
+		logrus.Error("Error nil Conn")
+		return -1, errors.New("error nil Conn")
+	}
+	userIDReq := fmt.Sprintf("SELECT user_id FROM sessions WHERE cookie = '%s' ;", cookie)
+
+	ctx := context.Background()
+	rowsC, err := ps.Conn.Query(ctx, userIDReq)
+	if err != nil {
+		logrus.Error(err)
+		return -1, err
+	}
+	defer rowsC.Close()
+	for rowsC.Next() {
+		rowsC.Scan(&id)
+	}
+	err = rowsC.Err()
+	if err != nil {
+		logrus.Error(err)
+		return -1, err
+	}
+	return id, err
+}
+
+func (ps *PostgresStorage) GetBalance(cookie string) (balance float64, err error) {
+	//request to table session return user_id
+	if ps.Conn == nil {
+		logrus.Error("Error nil Conn")
+		return balance, errors.New("error nil Conn")
+	}
+	//request to table users return balance
+	userID, err := ps.GetUserID(cookie)
+	if err != nil {
+		return balance, err
+	}
+	selbalanceReq := fmt.Sprintf("SELECT balance FROM users WHERE id = '%d';", userID)
+	ctx := context.Background()
+	rows, err := ps.Conn.Query(ctx, selbalanceReq)
+	if err != nil {
+		logrus.Error(err)
+		return balance, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var NullFloat64 sql.NullFloat64
+		rows.Scan(&NullFloat64)
+		if NullFloat64.Valid {
+			balance = NullFloat64.Float64
+		}
+	}
+	err = rows.Err()
+	if err != nil {
+		logrus.Error(err)
+		return balance, err
+	}
+	return balance, err
+
+}
+
+func (ps *PostgresStorage) GetSUMWithdraws(userID int) (withdrawals float64, err error) {
+	//request to table session return user_id
+	if ps.Conn == nil {
+		logrus.Error("Error nil Conn")
+		return withdrawals, errors.New("error nil Conn")
+	}
+
+	//request to table withdrawals return sum withdraws
+	ctx := context.Background()
+	sumWithdrawalsReq := fmt.Sprintf("SELECT SUM (withdraw) AS sumw FROM withdrawals WHERE user_id = '%d';", userID)
+	rows, err := ps.Conn.Query(ctx, sumWithdrawalsReq)
+	if err != nil {
+		logrus.Error(err)
+		return withdrawals, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var NullFloat64 sql.NullFloat64
+		rows.Scan(&NullFloat64)
+		if NullFloat64.Valid {
+			withdrawals = NullFloat64.Float64
+		}
+	}
+	err = rows.Err()
+	if err != nil {
+		logrus.Error(err)
+		return withdrawals, err
+	}
+	return withdrawals, err
+}
+func (ps *PostgresStorage) GetWithdrawals(userID int) ([]types.Withdraw, error) {
+	//request to table session return user_id
+	if ps.Conn == nil {
+		logrus.Error("Error nil Conn")
+		return nil, errors.New("error nil Conn")
+	}
+
+	//request to table withdrawals return sum withdraws
+	ctx := context.Background()
+	sumWithdrawalsReq := fmt.Sprintf("SELECT order_id, withdraw, processed_at FROM withdrawals WHERE user_id = '%d' ORDER BY  processed_at;", userID)
+	rows, err := ps.Conn.Query(ctx, sumWithdrawalsReq)
+	if err != nil {
+		logrus.Error(err)
+		return nil, err
+	}
+	defer rows.Close()
+	var withdraw types.Withdraw
+	withdrawals := make([]types.Withdraw, 0)
+	for rows.Next() {
+		var nullFloat64 sql.NullFloat64
+		rows.Scan(&withdraw.Order, &withdraw.Sum, &withdraw.ProcessedAT)
+		if nullFloat64.Valid {
+			withdraw.Sum = nullFloat64.Float64
+		}
+		withdrawals = append(withdrawals, withdraw)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		logrus.Error(err)
+		return withdrawals, err
+	}
+	return withdrawals, err
+}
+
+func (ps *PostgresStorage) WriteWithdraw(withdraw types.Withdraw, userID int) error {
+	if ps.Conn == nil {
+		logrus.Error("Error nil Conn")
+		return errors.New("error nil Conn")
+	}
+
+	update := `INSERT INTO withdrawals (user_id, order_id, withdraw, processed_at) values($1,$2,$3,$4);`
+	_, err := ps.Conn.Exec(context.Background(), update, userID, withdraw.Order, withdraw.Sum, time.Now().Format(time.RFC3339))
+	if err != nil {
+		logrus.Error(err)
+		return err
+	}
+	return nil
 }
 
 // func SaveDataToDB(sm *InMemory) {

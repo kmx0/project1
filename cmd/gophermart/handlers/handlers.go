@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
+	"github.com/kmx0/project1/cmd/accrual"
 	"github.com/kmx0/project1/cmd/gophermart/storage"
 	"github.com/kmx0/project1/internal/config"
 	"github.com/kmx0/project1/internal/crypto"
@@ -17,16 +18,16 @@ import (
 
 var store storage.Storage
 
-// var cfg config.Config
+var cfg config.Config
 
 func SetRepository(s storage.Storage) {
 	store = s
 }
 
-func SetupRouter(cf config.Config, store storage.Storage) (*gin.Engine) {
+func SetupRouter(cf config.Config, store storage.Storage) *gin.Engine {
 	//  *storage.InMemory) {
 	// store := storage.NewDB()
-	// cfg = cf
+	cfg = cf
 	SetRepository(store)
 
 	r := gin.New()
@@ -39,8 +40,10 @@ func SetupRouter(cf config.Config, store storage.Storage) (*gin.Engine) {
 	r.POST("/api/user/register", HandleRegister)
 	r.POST("/api/user/login", HandleLogin)
 	r.GET("/api/user/orders", HandleGetOrders)
-	r.POST("/api/user/orders", HandlePostOrders)
+	r.POST("/api/user/orders", HandlePostOrder)
 	r.GET("/api/user/balance", HandleGetBalance)
+	r.POST("/api/user/balance/withdraw", HandlePostWithdraw)
+	r.GET("/api/user/balance/withdrawals", HandleGetWithdrawals)
 
 	// r.POST("/update/", HandleUpdateJSON)
 	// r.POST("/updates/", HandleUpdateBatchJSON)
@@ -135,7 +138,7 @@ func HandleLogin(c *gin.Context) {
 
 }
 
-func HandlePostOrders(c *gin.Context) {
+func HandlePostOrder(c *gin.Context) {
 	logrus.SetReportCaller(true)
 	contenType := c.GetHeader("Content-Type")
 	logrus.Info(contenType)
@@ -143,8 +146,8 @@ func HandlePostOrders(c *gin.Context) {
 		c.Status(http.StatusBadRequest)
 	} else {
 		// cookieHeader := c.GetHeader("Set-Cookie")
-		cookie, err := c.Request.Cookie("session")
-		logrus.Info(cookie, err)
+		cookie, _ := c.Request.Cookie("session")
+		// logrus.Info(cookie, err)
 		// cookie := cookieHeader.
 
 		// c.Header("Content-Type", "text/html; charset=utf-8")
@@ -155,11 +158,13 @@ func HandlePostOrders(c *gin.Context) {
 		order, _ := ioutil.ReadAll(body)
 		orderInt := string(order)
 		// logrus.Info("Need check by LUN")
+		// accrual.GetAccrual(cfg.AccSysSddr, orderInt)
 		if crypto.CalculateLuhn(orderInt) {
 			err := store.LoadNewOrder(cookie.Value, orderInt)
 			logrus.Error(err)
 			switch {
 			case err == nil:
+				accrual.GetAccrual(store, cfg.AccSysSddr, orderInt)
 				c.Status(http.StatusAccepted)
 			case strings.Contains(err.Error(), `duplicate key value violates unique constraint "orders_number_key"`):
 				c.Status(http.StatusOK)
@@ -206,8 +211,143 @@ func HandleGetBalance(c *gin.Context) {
 	logrus.SetReportCaller(true)
 	// cookieHeader := c.GetHeader("Set-Cookie")
 	cookie, err := c.Request.Cookie("session")
+	logrus.Info(cookie, err)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	c.Header("Content-Type", "application/json")
+	// cfg.AccSysSddr
+	current, err := store.GetBalance(cookie.Value)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	userID, err := store.GetUserID(cookie.Value)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	withdrawals, err := store.GetSUMWithdraws(userID)
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	var balance types.Balance
+	balance.Current = current
+	balance.Withdrawn = withdrawals
+
+	c.JSON(http.StatusOK, balance)
+
+}
+func HandlePostWithdraw(c *gin.Context) {
+	logrus.SetReportCaller(true)
+	contenType := c.GetHeader("Content-Type")
+	logrus.Info(contenType)
+	if contenType != "application/json" {
+		c.Status(http.StatusUnprocessableEntity)
+		return
+	}
+
+	body := c.Request.Body
+	defer body.Close()
+
+	decoder := json.NewDecoder(body)
+	var withdraw types.Withdraw
+
+	err := decoder.Decode(&withdraw)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusUnprocessableEntity)
+		return
+	}
+	//check order
+	if !crypto.CalculateLuhn(withdraw.Order) {
+		c.Status(http.StatusUnprocessableEntity)
+		return
+	}
+	//block table
+	// get user_id for cookie
+	cookie, err := c.Request.Cookie("session")
+	logrus.Info(cookie, err)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	userID, err := store.GetUserID(cookie.Value)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	withdrawals, err := store.GetWithdrawals(userID)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	//check new order or not
+	for _, v := range withdrawals {
+		if v.Order == withdraw.Order {
+			c.Status(http.StatusUnprocessableEntity)
+			return
+		}
+	}
+	current, err := store.GetBalance(cookie.Value)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if current < withdraw.Sum {
+		c.Status(http.StatusPaymentRequired)
+		return
+	}
+
+	err = store.ChangeBalanceValue(withdraw.Sum, "-", userID)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	err = store.WriteWithdraw(withdraw, userID)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	c.Status(http.StatusOK)
+
+}
+
+func HandleGetWithdrawals(c *gin.Context) {
+	logrus.SetReportCaller(true)
+	// cookieHeader := c.GetHeader("Set-Cookie")
+	cookie, err := c.Request.Cookie("session")
 	c.Header("Content-Type", "application/json")
 	logrus.Info(cookie, err)
+	userID, err := store.GetUserID(cookie.Value)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	withdrawals, err := store.GetWithdrawals(userID)
+	if err != nil {
+		logrus.Error(err)
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	if withdrawals == nil {
+		c.Status(http.StatusNoContent)
+	}
+	c.JSON(http.StatusOK, withdrawals)
+
 }
 
 func HandleAutorize() gin.HandlerFunc {

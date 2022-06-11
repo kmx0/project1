@@ -16,4 +16,11 @@ type Storage interface {
 	CheckCookie(cookie, ip, userAgent string) error
 	LoadNewOrder(cookie string, order string) error
 	GetOrdersList(cookie string) ([]types.Order, error)
+	WriteAccrual(accrual types.AccrualO) error
+	GetUserID(cookie string) (id int, err error)
+	GetBalance(cookie string) (balance float64, err error)
+	GetSUMWithdraws(userID int) (withdrawals float64, err error)
+	GetWithdrawals(userID int) ([]types.Withdraw, error)
+	ChangeBalanceValue(value float64, action string, userID int) error
+	WriteWithdraw(withdraw types.Withdraw, userID int) error
 }
