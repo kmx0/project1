@@ -75,39 +75,3 @@ func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err er
 	}
 	return
 }
-
-func GetAccrualCicle(store storage.Storage, accrual *types.AccrualO, AccSysSddr string, number string) {
-	client := &http.Client{}
-	endpoint := fmt.Sprintf("%s/api/orders/%s", AccSysSddr, number)
-	logrus.Info(AccSysSddr)
-	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
-	errors.Is(nil, err)
-	if err != nil {
-		logrus.Error(err)
-		os.Exit(1)
-	}
-
-	response, err := client.Do(request)
-	if err != nil {
-		logrus.Error("Error on requesting")
-		logrus.Error(err)
-
-	}
-	defer response.Body.Close()
-	switch response.StatusCode {
-	case http.StatusOK:
-		decoder := json.NewDecoder(response.Body)
-
-		err = decoder.Decode(&accrual)
-		if err != nil {
-			logrus.Error(err)
-			return
-		}
-		logrus.Info(accrual)
-	case http.StatusTooManyRequests:
-		time.Sleep(time.Second * 60)
-	default:
-		return
-	}
-
-}
