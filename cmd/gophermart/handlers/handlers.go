@@ -164,7 +164,7 @@ func HandlePostOrder(c *gin.Context) {
 			logrus.Error(err)
 			switch {
 			case err == nil:
-				accrual.GetAccrual(store, cfg.AccSysSddr, orderInt)
+				accrual.GetAccrual(store, cfg.AccSysSddr, orderInt, false)
 				c.Status(http.StatusAccepted)
 			case strings.Contains(err.Error(), `duplicate key value violates unique constraint "orders_number_key"`):
 				c.Status(http.StatusOK)
