@@ -14,7 +14,6 @@ import (
 )
 
 func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err error) {
-
 	client := &http.Client{}
 	endpoint := fmt.Sprintf("%s/api/orders/%s", AccSysSddr, number)
 	logrus.Info(endpoint)
@@ -31,23 +30,7 @@ func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err er
 		logrus.Error(err)
 
 	}
-	// печатаем код ответа
-	logrus.Info("Статус-код ", response.Status)
 	defer response.Body.Close()
-	// читаем поток из тела ответа
-	// body, err := io.ReadAll(response.Body)
-	// if err != nil {
-	// 	logrus.Error("Error on Reading body")
-	// 	logrus.Error(err)
-
-	// }
-
-	// bodyString := fmt.Sprintf(`  {
-	// 	"order": "%s",
-	// 	"status": "REGISTERED"
-	// 	}`, number)
-	// logrus.Info(bodyString)
-	// body := ioutil.NopCloser(strings.NewReader(bodyString))
 	switch response.StatusCode {
 	case http.StatusOK:
 		decoder := json.NewDecoder(response.Body)
@@ -62,12 +45,10 @@ func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err er
 		go func() {
 			for {
 				switch {
-				// kill -SIGHUP XXXX [XXXX - идентификатор процесса для программы]
 				case accrual.Status == "INVALID" || accrual.Status == "PROCESSED":
 					logrus.Infof("Writing to table orders status %s for number %s", accrual.Status, number)
 					err := store.WriteAccrual(accrual)
 					logrus.Info(err)
-					//write to db invalid or proc
 					return
 				case accrual.Status == "REGISTERED":
 					logrus.Infof("Getted %s", accrual.Status)
@@ -88,7 +69,7 @@ func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err er
 		logrus.Info("StatusTooManyRequests")
 		return
 	default:
-		logrus.Info("Schet")
+		logrus.Info("Default")
 		return
 
 	}
@@ -97,7 +78,7 @@ func GetAccrual(store storage.Storage, AccSysSddr string, number string) (err er
 
 func GetAccrualCicle(store storage.Storage, accrual *types.AccrualO, AccSysSddr string, number string) {
 	client := &http.Client{}
-	endpoint := fmt.Sprintf("%s/%s", AccSysSddr, number)
+	endpoint := fmt.Sprintf("%s/api/orders/%s", AccSysSddr, number)
 	logrus.Info(AccSysSddr)
 	request, err := http.NewRequest(http.MethodGet, endpoint, nil)
 	errors.Is(nil, err)
@@ -112,44 +93,7 @@ func GetAccrualCicle(store storage.Storage, accrual *types.AccrualO, AccSysSddr 
 		logrus.Error(err)
 
 	}
-	// печатаем код ответа
-	logrus.Info("Статус-код ", response.Status)
 	defer response.Body.Close()
-	// читаем поток из тела ответа
-	// body, err := io.ReadAll(response.Body)
-	// if err != nil {
-	// 	logrus.Error("Error on Reading body")
-	// 	logrus.Error(err)
-
-	// }
-	// if response.Status = "Accepted"
-	// check is json/
-
-	// test1 := fmt.Sprintf(`  {
-	// 	"order": "%s",
-	// 	"status": "REGISTERED"
-	// 	}`, number)
-	// test2 := fmt.Sprintf(`  {
-	// 	"order": "%s",
-	// 	"status": "PROCESSING"
-	// }`, number)
-	// test3 := fmt.Sprintf(`  {
-	// 	"order": "%s",
-	// 	"status": "PROCESSED",
-	// 	"accrual": 400
-	// 	}`, number)
-	// test4 := fmt.Sprintf(`  {
-	// 	"order": "%s",
-	// 	"status": "INVALID"
-	// 	}`, number)
-	// testBody := []string{test1, test2, test3, test4}
-	// rand.Seed(time.Now().UnixNano())
-	// min := 0
-	// max := 3
-	// // fmt.Println()
-	// rid := rand.Intn(max-min+1) + min
-	// // logrus.Info(body)
-	// body := ioutil.NopCloser(strings.NewReader(testBody[rid]))
 	switch response.StatusCode {
 	case http.StatusOK:
 		decoder := json.NewDecoder(response.Body)
