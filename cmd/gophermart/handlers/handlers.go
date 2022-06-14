@@ -145,26 +145,17 @@ func HandlePostOrder(c *gin.Context) {
 	if contenType != "text/plain" {
 		c.Status(http.StatusBadRequest)
 	} else {
-		// cookieHeader := c.GetHeader("Set-Cookie")
 		cookie, _ := c.Request.Cookie("session")
-		// logrus.Info(cookie, err)
-		// cookie := cookieHeader.
-
-		// c.Header("Content-Type", "text/html; charset=utf-8")
-		// Content-Type: text/plain
 		body := c.Request.Body
 		defer body.Close()
-		// crypto.	CookieHash(c.ClientIP(), c.Request.UserAgent(), )
 		order, _ := ioutil.ReadAll(body)
 		orderInt := string(order)
-		// logrus.Info("Need check by LUN")
-		// accrual.GetAccrual(cfg.AccSysSddr, orderInt)
 		if crypto.CalculateLuhn(orderInt) {
 			err := store.LoadNewOrder(cookie.Value, orderInt)
 			logrus.Error(err)
 			switch {
 			case err == nil:
-				accrual.GetAccrual(store, cfg.AccSysSddr, orderInt, false)
+				accrual.GetAccrual(store, cfg.AccSysSddr, orderInt)
 				c.Status(http.StatusAccepted)
 			case strings.Contains(err.Error(), `duplicate key value violates unique constraint "orders_number_key"`):
 				c.Status(http.StatusOK)
@@ -209,16 +200,13 @@ func HandleGetOrders(c *gin.Context) {
 
 func HandleGetBalance(c *gin.Context) {
 	logrus.SetReportCaller(true)
-	// cookieHeader := c.GetHeader("Set-Cookie")
 	cookie, err := c.Request.Cookie("session")
-	logrus.Info(cookie, err)
 	if err != nil {
 		logrus.Error(err)
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 	c.Header("Content-Type", "application/json")
-	// cfg.AccSysSddr
 	current, err := store.GetBalance(cookie.Value)
 	if err != nil {
 		logrus.Error(err)
@@ -246,7 +234,6 @@ func HandleGetBalance(c *gin.Context) {
 func HandlePostWithdraw(c *gin.Context) {
 	logrus.SetReportCaller(true)
 	contenType := c.GetHeader("Content-Type")
-	logrus.Info(contenType)
 	if contenType != "application/json" {
 		c.Status(http.StatusUnprocessableEntity)
 		return
